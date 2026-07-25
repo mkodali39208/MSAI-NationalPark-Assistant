@@ -218,20 +218,7 @@ def upload_to_qdrant(client: QdrantClient, chunks: List[Dict], embeddings: List[
                 "park_name": chunk["park_name"],
                 "chunk_index": chunk["chunk_index"],
                 "source_url": chunk["source_url"],
-                "source_type": chunk.get("source_type", "nps"),
-                "title": chunk.get("title", ""),
-                "chunk_id": chunk["id"],
-                # LangChain QdrantVectorStore reads document metadata from this nested object.
-                # Flat fields above are intentionally retained for fast Qdrant filtering.
-                "metadata": {
-                    "park_code": chunk["park_code"],
-                    "park_name": chunk["park_name"],
-                    "chunk_index": chunk["chunk_index"],
-                    "source_url": chunk["source_url"],
-                    "source_type": chunk.get("source_type", "nps"),
-                    "title": chunk.get("title", ""),
-                    "chunk_id": chunk["id"],
-                },
+                "chunk_id": chunk["id"]
             }
         )
         points.append(point)

@@ -39,44 +39,116 @@ logger = logging.getLogger(__name__)
 MODEL = "llama-3.3-70b-versatile"
 COLLECTION = "national_parks"
 
-SYSTEM_PROMPT = """You are a helpful and knowledgeable National Parks expert assistant. Your role is to help visitors learn about U.S. National Parks, including their features, activities, wildlife, history, and visitor information.
+SYSTEM_PROMPT = """You are a friendly and knowledgeable National Parks assistant.
 
-Guidelines:
-- Provide accurate, helpful information based on the context provided
-- Include specific details when available (trail names, distances, seasonal info, etc.)
-- If you don't have enough information to answer, say so and suggest where users can find more info
-- Be friendly and encouraging about visiting national parks
-- Always prioritize visitor safety when relevant
-- When answering follow-up questions, reference previous parts of the conversation naturally
-- If a user's question refers to "it" or "there", use conversation context to understand what they mean
-- Use the retrieved context as the factual source; do not invent fees, permit quotas, hours, phone numbers, accessibility details, or safety instructions
-- For time-sensitive facts such as current closures, current hours, fees, reservations, and conditions, mention that visitors should verify the cited official NPS source before travel
-- Do not claim an objectively "best" restaurant. Describe official dining options found in context and explain that the best choice depends on preferences
-- Do not predict weather a month in advance. Provide seasonal climate expectations only when supported by context and recommend checking an official short-range forecast closer to the visit"""
+Answer the user's question using only the retrieved National Park Service information.
 
-# Park name → 4-letter code (used for detection)
+Rules:
+- Give a direct answer first.
+- Keep answers clear, concise, and easy to read.
+- Use bullet points for lists, trails, viewpoints, activities, wildlife, or recommendations.
+- Never say phrases like "The context provided..." or "The documents mention...".
+- Answer naturally, as if speaking to a visitor.
+- Do not make up facts that are not supported by the retrieved information.
+- If the information is unavailable, simply say:
+  "I couldn't find enough information in the available park documents to answer that."
+- Mention permits, closures, or safety information when relevant."""
+
+# Park name / landmark → 4-letter code (used for detection)
 PARK_MAPPINGS: Dict[str, str] = {
-    'yellowstone': 'yell',
-    'yosemite': 'yose',
-    'zion': 'zion',
-    'glacier': 'glac',
-    'grand canyon': 'grca',
-    'rocky mountain': 'romo',
-    'great smoky': 'grsm',
-    'great smoky mountains': 'grsm',
-    'acadia': 'acad',
-    'olympic': 'olym',
-    'grand teton': 'grte',
-    'bryce canyon': 'brca',
-    'arches': 'arch',
-    'canyonlands': 'cany',
-    'sequoia': 'seki',
-    'kings canyon': 'seki',
-    'death valley': 'deva',
-    'joshua tree': 'jotr',
-    'shenandoah': 'shen',
-    'mount rainier': 'mora',
-    'crater lake': 'crla',
+    # Yellowstone
+    "yellowstone": "yell",
+    "old faithful": "yell",
+    "grand prismatic": "yell",
+    "grand prismatic spring": "yell",
+
+    # Yosemite
+    "yosemite": "yose",
+    "half dome": "yose",
+    "el capitan": "yose",
+    "glacier point": "yose",
+    "yosemite falls": "yose",
+
+    # Zion
+    "zion": "zion",
+    "angel's landing": "zion",
+    "angels landing": "zion",
+    "angel’s landing": "zion",
+    "the narrows": "zion",
+    "emerald pools": "zion",
+
+    # Bryce Canyon
+    "bryce canyon": "brca",
+    "rainbow point": "brca",
+    "sunset point": "brca",
+    "sunrise point": "brca",
+    "inspiration point": "brca",
+    "bryce amphitheater": "brca",
+
+    # Grand Canyon
+    "grand canyon": "grca",
+    "south rim": "grca",
+    "north rim": "grca",
+    "bright angel trail": "grca",
+
+    # Glacier
+    "glacier": "glac",
+    "going-to-the-sun road": "glac",
+
+    # Rocky Mountain
+    "rocky mountain": "romo",
+    "trail ridge road": "romo",
+
+    # Great Smoky Mountains
+    "great smoky": "grsm",
+    "great smoky mountains": "grsm",
+    "clingmans dome": "grsm",
+    "kuwohi": "grsm",
+
+    # Acadia
+    "acadia": "acad",
+    "cadillac mountain": "acad",
+
+    # Olympic
+    "olympic": "olym",
+    "hoh rainforest": "olym",
+
+    # Grand Teton
+    "grand teton": "grte",
+    "jackson lake": "grte",
+
+    # Arches
+    "arches": "arch",
+    "delicate arch": "arch",
+
+    # Canyonlands
+    "canyonlands": "cany",
+    "mesa arch": "cany",
+
+    # Sequoia & Kings Canyon
+    "sequoia": "seki",
+    "kings canyon": "seki",
+    "general sherman": "seki",
+
+    # Death Valley
+    "death valley": "deva",
+    "badwater basin": "deva",
+
+    # Joshua Tree
+    "joshua tree": "jotr",
+    "skull rock": "jotr",
+
+    # Shenandoah
+    "shenandoah": "shen",
+    "old rag": "shen",
+
+    # Mount Rainier
+    "mount rainier": "mora",
+    "paradise": "mora",
+
+    # Crater Lake
+    "crater lake": "crla",
+    "wizard island": "crla",
 }
 
 # 4-letter code → full park name (used for display and prompts)
@@ -163,7 +235,6 @@ def _get_vectorstore() -> QdrantVectorStore:
             collection_name=COLLECTION,
             embedding=_get_embeddings(),
             content_payload_key="text",  # matches payload key used when building the index
-            metadata_payload_key="metadata",
         )
     return _vectorstore
 
@@ -366,12 +437,26 @@ def retrieve_node(state: RAGState) -> dict:
         )
 
     vectorstore = _get_vectorstore()
+
     try:
         docs_with_scores = vectorstore.similarity_search_with_score(
             query=search_query,
             k=top_k,
             filter=park_filter,
         )
+
+        print("=" * 60)
+        print(f"Query: {search_query}")
+        print(f"Retrieved {len(docs_with_scores)} documents")
+
+        for i, (doc, score) in enumerate(docs_with_scores):
+            print(f"\nResult {i+1}")
+            print(f"Score: {score}")
+            print(f"Park: {doc.metadata}")
+            print(f"Text: {doc.page_content[:200]}")
+
+        print("=" * 60)
+
     except Exception as e:
         # Qdrant requires a keyword index on park_code for filtered searches.
         # If the index is missing, fall back to an unfiltered search and filter
@@ -786,16 +871,7 @@ class RAGPipeline:
             List of matching document chunks with metadata
         """
         park_filter = None
-        if park_code:
-            park_filter = Filter(
-                must=[
-                    FieldCondition(
-                        key="park_code",
-                        match=MatchValue(value=park_code),
-                    )
-                ]
-            )
-
+        
         vectorstore = _get_vectorstore()
         docs_with_scores = vectorstore.similarity_search_with_score(
             query=query,
