@@ -36,7 +36,13 @@ logger = logging.getLogger(__name__)
 
 # ─────────────────────────── Constants ────────────────────────────────────────
 
-MODEL = "llama-3.3-70b-versatile"
+# LLM provider switch: "groq" (cloud, default) or "ollama" (local).
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq").strip().lower()
+
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1").strip()
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").strip()
+
 COLLECTION = "national_parks"
 
 SYSTEM_PROMPT = """You are a helpful and knowledgeable National Parks expert assistant. Your role is to help visitors learn about U.S. National Parks, including their features, activities, wildlife, history, and visitor information.
@@ -153,6 +159,29 @@ def _get_qdrant_client() -> QdrantClient:
             raise ValueError("QDRANT_URL and QDRANT_API_KEY must be set")
         _qdrant_client = QdrantClient(url=url, api_key=api_key)
     return _qdrant_client
+
+
+def _get_llm(temperature: float = 0, max_tokens: Optional[int] = None, streaming: bool = False):
+    """
+    Build the chat LLM for the configured provider.
+
+    LLM_PROVIDER=ollama routes to a local Ollama server (no API key, no
+    network egress) instead of Groq. Both providers are LangChain chat
+    models, so the rest of the graph (rewrite_query_node, generate_node)
+    is unaware of which one is active.
+    """
+    if LLM_PROVIDER == "ollama":
+        from langchain_ollama import ChatOllama
+
+        kwargs = {"model": OLLAMA_MODEL, "base_url": OLLAMA_BASE_URL, "temperature": temperature}
+        if max_tokens:
+            kwargs["num_predict"] = max_tokens
+        return ChatOllama(**kwargs)
+
+    kwargs = {"model": GROQ_MODEL, "temperature": temperature, "streaming": streaming}
+    if max_tokens:
+        kwargs["max_tokens"] = max_tokens
+    return ChatGroq(**kwargs)
 
 
 def _get_vectorstore() -> QdrantVectorStore:
@@ -307,7 +336,7 @@ def rewrite_query_node(state: RAGState) -> dict:
         )
 
     try:
-        llm = ChatGroq(model=MODEL, temperature=0.3, max_tokens=100)
+        llm = _get_llm(temperature=0.3, max_tokens=100)
         chain = REWRITE_PROMPT | llm
         response = chain.invoke({
             "conversation_text": conversation_text,
@@ -565,7 +594,7 @@ def generate_node(state: RAGState) -> dict:
     try:
         # streaming=True enables token-level events via astream_events;
         # invoke() behaviour is unchanged — still returns a complete response.
-        llm = ChatGroq(model=MODEL, temperature=0, streaming=True)
+        llm = _get_llm(temperature=0, streaming=True)
         response = llm.invoke(messages)
         answer = response.content
     except Exception as e:
@@ -623,6 +652,11 @@ def _route_after_retrieval(state: RAGState) -> str:
 
 def _build_graph():
     """Compile the LangGraph StateGraph for the RAG pipeline."""
+    if LLM_PROVIDER == "ollama":
+        logger.info(f"LLM provider: ollama (model={OLLAMA_MODEL}, base_url={OLLAMA_BASE_URL})")
+    else:
+        logger.info(f"LLM provider: groq (model={GROQ_MODEL})")
+
     graph = StateGraph(RAGState)
 
     graph.add_node("extract_park", extract_park_node)
