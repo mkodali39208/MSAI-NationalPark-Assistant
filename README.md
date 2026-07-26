@@ -1,9 +1,6 @@
 # 🏞️ National Parks Intelligent Chatbot
 
 A cutting-edge AI-powered chatbot that helps users explore and learn about U.S. National Parks through natural, multi-turn conversations. Built entirely on free-tier cloud services using Retrieval Augmented Generation (RAG).
-
-**Live Demo:** https://national-parks-chatbot.onrender.com
-
 ---
 
 ## ✨ Key Features
